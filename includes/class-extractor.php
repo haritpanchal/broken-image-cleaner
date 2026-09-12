@@ -75,27 +75,6 @@ class Extractor {
 	}
 
 	/**
-	 * Collect the distinct image URLs in a piece of content.
-	 *
-	 * @param string $content         Post content.
-	 * @param bool   $include_srcset  Whether to include srcset candidates.
-	 * @return array
-	 */
-	public static function urls( $content, $include_srcset = true ) {
-		$urls = array();
-
-		foreach ( self::extract( $content ) as $reference ) {
-			$urls[] = $reference['src'];
-
-			if ( $include_srcset ) {
-				$urls = array_merge( $urls, $reference['srcset'] );
-			}
-		}
-
-		return array_values( array_unique( $urls ) );
-	}
-
-	/**
 	 * Read the src and srcset of a single, isolated image tag.
 	 *
 	 * @param string $tag One `<img>` tag.
