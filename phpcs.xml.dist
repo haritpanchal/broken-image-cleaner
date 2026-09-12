@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<ruleset name="Broken Image Cleaner">
+	<description>Coding standards for the Broken Image Cleaner plugin.</description>
+
+	<file>.</file>
+
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+
+	<!-- Command-line test scripts. These never run inside WordPress, so the
+	     runtime sniffs (output escaping, global prefixing) do not apply, and
+	     they are not shipped in the released plugin. -->
+	<exclude-pattern>/tests/*</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+	<arg name="parallel" value="8"/>
+
+	<!-- The plugin's minimum supported PHP version. -->
+	<config name="testVersion" value="7.4-"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<!-- The plugin's minimum supported WordPress version. -->
+	<config name="minimum_wp_version" value="5.6"/>
+
+	<rule ref="WordPress">
+		<!-- The findings table is a custom table; core APIs cannot query it. Each
+		     direct query is individually justified with a phpcs:ignore comment. -->
+		<exclude name="WordPress.DB.DirectDatabaseQuery.NoCaching"/>
+	</rule>
+
+	<!-- Every global symbol must carry the plugin's unique prefix. -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="BrokenImageCleaner"/>
+				<element value="broken_image_cleaner"/>
+				<element value="BROKEN_IMAGE_CLEANER"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="broken-image-cleaner"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>
