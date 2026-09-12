@@ -249,6 +249,34 @@ class Scanner {
 	}
 
 	/**
+	 * The condition that selects scannable posts, and the values behind it.
+	 *
+	 * Shared by the batch query and the count so the two can never drift into
+	 * disagreeing about what counts as a candidate.
+	 *
+	 * @return array {
+	 *     @type string $where  SQL condition using placeholders.
+	 *     @type array  $params Values for those placeholders, in order.
+	 * }
+	 */
+	private static function candidate_condition() {
+		global $wpdb;
+
+		$types    = self::post_types();
+		$statuses = self::statuses();
+
+		$type_placeholders   = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
+		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+
+		return array(
+			'where'  => "post_type IN ( {$type_placeholders} )
+				AND post_status IN ( {$status_placeholders} )
+				AND post_content LIKE %s",
+			'params' => array_merge( $types, $statuses, array( '%' . $wpdb->esc_like( '<img' ) . '%' ) ),
+		);
+	}
+
+	/**
 	 * Fetch the next batch of candidate posts.
 	 *
 	 * @param int $after_id Highest post ID already scanned.
@@ -257,29 +285,21 @@ class Scanner {
 	private static function next_posts( $after_id ) {
 		global $wpdb;
 
-		$types    = self::post_types();
-		$statuses = self::statuses();
+		$condition = self::candidate_condition();
+		$params    = array_merge( array( (int) $after_id ), $condition['params'], array( self::BATCH_SIZE ) );
 
-		$type_placeholders   = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
-		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
-		$like                = '%' . $wpdb->esc_like( '<img' ) . '%';
-
-		$params = array_merge( array( (int) $after_id ), $types, $statuses, array( $like, self::BATCH_SIZE ) );
-
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Only the placeholder lists are interpolated, and they are built in code from the counts above; every value is passed to prepare(). Selecting posts by a substring of post_content has no core API equivalent, and caching one forward-only pass over the archive would serve no one.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- The only thing interpolated is the condition from candidate_condition(), which holds placeholders and nothing else; every value behind them is passed to prepare(). Selecting posts by a substring of post_content has no core API equivalent, and caching one forward-only pass over the archive would serve no one.
 		$posts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT ID, post_content FROM {$wpdb->posts}
 				WHERE ID > %d
-				AND post_type IN ( {$type_placeholders} )
-				AND post_status IN ( {$status_placeholders} )
-				AND post_content LIKE %s
+				AND {$condition['where']}
 				ORDER BY ID ASC
 				LIMIT %d",
 				$params
 			)
 		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 		return $posts;
 	}
@@ -292,26 +312,16 @@ class Scanner {
 	private static function count_candidates() {
 		global $wpdb;
 
-		$types    = self::post_types();
-		$statuses = self::statuses();
+		$condition = self::candidate_condition();
 
-		$type_placeholders   = implode( ', ', array_fill( 0, count( $types ), '%s' ) );
-		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
-		$like                = '%' . $wpdb->esc_like( '<img' ) . '%';
-
-		$params = array_merge( $types, $statuses, array( $like ) );
-
-		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- As above: placeholder lists are built in code, every value is prepared, and this count runs once when a scan starts.
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- As above: the condition carries only placeholders, and every value behind them is prepared. Every placeholder in this query lives inside that condition, which is why the analyser cannot find one in the string itself. This count runs once when a scan starts.
 		$total = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$wpdb->posts}
-				WHERE post_type IN ( {$type_placeholders} )
-				AND post_status IN ( {$status_placeholders} )
-				AND post_content LIKE %s",
-				$params
+				"SELECT COUNT(*) FROM {$wpdb->posts} WHERE {$condition['where']}",
+				$condition['params']
 			)
 		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 		return $total;
 	}
