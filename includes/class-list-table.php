@@ -54,7 +54,7 @@ class List_Table extends \WP_List_Table {
 			'broken'       => array(
 				'label'   => __( 'Broken', 'broken-image-cleaner' ),
 				'status'  => Store::STATUS_BROKEN,
-				'reasons' => array( Store::REASON_FILE_MISSING, Store::REASON_ZERO_BYTE ),
+				'reasons' => array( Store::REASON_FILE_MISSING, Store::REASON_ZERO_BYTE, Store::REASON_SRCSET_MISSING ),
 			),
 			'size_missing' => array(
 				'label'   => __( 'Missing sizes', 'broken-image-cleaner' ),
@@ -261,9 +261,10 @@ class List_Table extends \WP_List_Table {
 	 */
 	protected function column_reason( $item ) {
 		$labels = array(
-			Store::REASON_FILE_MISSING => __( 'File not found', 'broken-image-cleaner' ),
-			Store::REASON_ZERO_BYTE    => __( 'File is empty', 'broken-image-cleaner' ),
-			Store::REASON_SIZE_MISSING => __( 'Generated size missing (original is present)', 'broken-image-cleaner' ),
+			Store::REASON_FILE_MISSING   => __( 'File not found', 'broken-image-cleaner' ),
+			Store::REASON_ZERO_BYTE      => __( 'File is empty', 'broken-image-cleaner' ),
+			Store::REASON_SIZE_MISSING   => __( 'Generated size missing (original is present)', 'broken-image-cleaner' ),
+			Store::REASON_SRCSET_MISSING => __( 'Responsive size missing — only the srcset entry is removed, the image stays', 'broken-image-cleaner' ),
 		);
 
 		return isset( $labels[ $item->reason ] ) ? esc_html( $labels[ $item->reason ] ) : esc_html( $item->reason );

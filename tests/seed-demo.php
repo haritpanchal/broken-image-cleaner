@@ -203,7 +203,7 @@ $posts = array(
 		'title'   => 'Demo 09 — Responsive image with a missing srcset candidate',
 		'status'  => 'publish',
 		'type'    => 'post',
-		'expect'  => 'The missing srcset candidate is reported separately from the src.',
+		'expect'  => 'The missing srcset candidate is listed on its own. Removing it must edit the srcset only — the image still displays and must stay on the page.',
 		'content' => '<p>A responsive image whose larger version went missing.</p>
 <img src="' . $u . '/keeper-hero.jpg" srcset="' . $u . '/keeper-hero.jpg 640w, ' . $u . '/gone-large.jpg 1280w" sizes="(max-width: 640px) 100vw, 640px" alt="Responsive" />',
 	),

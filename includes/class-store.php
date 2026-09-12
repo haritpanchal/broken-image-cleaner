@@ -73,9 +73,10 @@ class Store {
 	/**
 	 * Reasons a finding was recorded.
 	 */
-	const REASON_FILE_MISSING = 'file_missing';
-	const REASON_ZERO_BYTE    = 'zero_byte';
-	const REASON_SIZE_MISSING = 'size_missing';
+	const REASON_FILE_MISSING   = 'file_missing';
+	const REASON_ZERO_BYTE      = 'zero_byte';
+	const REASON_SIZE_MISSING   = 'size_missing';
+	const REASON_SRCSET_MISSING = 'srcset_missing';
 
 	/**
 	 * Fully-qualified table name.

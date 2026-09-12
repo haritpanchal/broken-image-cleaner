@@ -66,7 +66,7 @@ file_put_contents( $dir . '/fine.jpg', $pixel );
 file_put_contents( $dir . '/photo.jpg', $pixel );
 
 // Absent: everything named "gone-*". Make sure of it.
-foreach ( array( 'gone-bare.jpg', 'gone-link.jpg', 'gone-caption.jpg', 'gone-figure.jpg' ) as $missing ) {
+foreach ( array( 'gone-bare.jpg', 'gone-link.jpg', 'gone-caption.jpg', 'gone-figure.jpg', 'gone-large.jpg' ) as $missing ) {
 	if ( file_exists( $dir . '/' . $missing ) ) {
 		unlink( $dir . '/' . $missing );
 	}
@@ -85,6 +85,8 @@ $content = <<<HTML
 <img src="{$url}/photo-150x150.jpg" alt="thumb" />
 <p>External images are out of scope in this version:</p>
 <img src="https://example.com/remote.jpg" alt="remote" />
+<p>A responsive image whose largest size is gone. The image still displays, so it must survive:</p>
+<img src="{$url}/fine.jpg" srcset="{$url}/fine.jpg 640w, {$url}/gone-large.jpg 1280w" sizes="100vw" alt="responsive" />
 <p>Closing paragraph with a [shortcode attr="1"].</p>
 HTML;
 
@@ -127,8 +129,8 @@ foreach ( Store::query( array( 'per_page' => 100 ) ) as $row ) {
 ksort( $reasons );
 
 $check(
-	'flags exactly the four missing files plus the missing thumbnail',
-	'gone-bare.jpg=file_missing, gone-caption.jpg=file_missing, gone-figure.jpg=file_missing, gone-link.jpg=file_missing, photo-150x150.jpg=size_missing',
+	'flags each missing file, the missing thumbnail and the dead srcset candidate',
+	'gone-bare.jpg=file_missing, gone-caption.jpg=file_missing, gone-figure.jpg=file_missing, gone-large.jpg=srcset_missing, gone-link.jpg=file_missing, photo-150x150.jpg=size_missing',
 	implode(
 		', ',
 		array_map(
@@ -158,7 +160,7 @@ foreach ( $rows as $name => $row ) {
 $report  = Remover::remove( $remove_ids );
 $cleaned = get_post( $post_id )->post_content;
 
-$check( 'four images were removed', 4, (int) $report['images_removed'] );
+$check( 'five references were removed', 5, (int) $report['images_removed'] );
 $check( 'one post was edited', 1, (int) $report['posts_changed'] );
 $check( 'no errors were reported', array(), $report['errors'] );
 
@@ -170,6 +172,12 @@ $check( 'no reference to a removed image remains', false, false !== strpos( $cle
 $check( 'the healthy image survived', true, false !== strpos( $cleaned, 'fine.jpg' ) );
 $check( 'the missing thumbnail was left alone', true, false !== strpos( $cleaned, 'photo-150x150.jpg' ) );
 $check( 'the external image was left alone', true, false !== strpos( $cleaned, 'remote.jpg' ) );
+
+// The responsive image displays fine from its src. Only the dead candidate in
+// its srcset should have gone; deleting the element would destroy a working image.
+$check( 'the working responsive image survived', true, false !== strpos( $cleaned, 'alt="responsive"' ) );
+$check( 'its dead srcset candidate is gone', false, false !== strpos( $cleaned, 'gone-large' ) );
+$check( 'its surviving srcset candidate is still listed', true, false !== strpos( $cleaned, 'fine.jpg 640w' ) );
 $check( 'unrelated shortcodes survived', true, false !== strpos( $cleaned, '[shortcode attr="1"]' ) );
 $check( 'the opening paragraph survived', true, false !== strpos( $cleaned, '<p>Opening paragraph.</p>' ) );
 $check( 'the escaped entity was not rewritten', true, false !== strpos( $cleaned, 'Between images &amp; things.' ) );

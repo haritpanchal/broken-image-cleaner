@@ -171,26 +171,43 @@ class Scanner {
 		}
 
 		$still_broken = array();
+		$references   = Extractor::extract( $content );
 
-		foreach ( Extractor::extract( $content ) as $reference ) {
-			$urls = array_merge( array( $reference['src'] ), $reference['srcset'] );
+		// Gather every src first. A URL that is some other image's source has
+		// to be treated as one even where it also turns up in a srcset.
+		$src_urls = array();
 
-			foreach ( array_unique( $urls ) as $url ) {
-				$check = $resolver->check( $url );
+		foreach ( $references as $reference ) {
+			$src_urls[ $reference['src'] ] = true;
+		}
+
+		foreach ( $references as $reference ) {
+			$snippet = self::snippet( $content, $reference['offset'], $reference['length'] );
+			$check   = $resolver->check( $reference['src'] );
+
+			if ( Resolver::STATUS_BROKEN === $check['status'] ) {
+				Store::record( $post_id, $reference['src'], $check['path'], $check['reason'], $snippet );
+
+				$still_broken[] = $reference['src'];
+			}
+
+			foreach ( $reference['srcset'] as $candidate ) {
+				if ( isset( $src_urls[ $candidate ] ) ) {
+					continue;
+				}
+
+				$check = $resolver->check( $candidate );
 
 				if ( Resolver::STATUS_BROKEN !== $check['status'] ) {
 					continue;
 				}
 
-				Store::record(
-					$post_id,
-					$url,
-					$check['path'],
-					$check['reason'],
-					self::snippet( $content, $reference['offset'], $reference['length'] )
-				);
+				// Recorded for what will be done about it rather than for why
+				// the file is gone: either way the repair is to drop it from
+				// the srcset and leave the image alone.
+				Store::record( $post_id, $candidate, $check['path'], Store::REASON_SRCSET_MISSING, $snippet );
 
-				$still_broken[] = $url;
+				$still_broken[] = $candidate;
 			}
 		}
 

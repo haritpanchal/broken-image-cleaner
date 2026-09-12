@@ -155,6 +155,36 @@ broken_image_cleaner_assert_removal(
 	'<p>Before</p><p>After</p>'
 );
 
+echo "\nRewriter: responsive images are repaired, not deleted\n";
+
+broken_image_cleaner_assert_removal(
+	'a dead srcset candidate is dropped and the image survives',
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" srcset="/wp-content/uploads/2013/07/fine.jpg 300w, ' . $gone . ' 600w" alt="x">',
+	$gone,
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" srcset="/wp-content/uploads/2013/07/fine.jpg 300w" alt="x">'
+);
+
+broken_image_cleaner_assert_removal(
+	'losing the last candidate takes srcset and sizes with it',
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" srcset="' . $gone . ' 600w" sizes="100vw" alt="x">',
+	$gone,
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" alt="x">'
+);
+
+broken_image_cleaner_assert_removal(
+	'a broken src still removes the element, srcset or not',
+	'<p>Before</p><img src="' . $gone . '" srcset="/wp-content/uploads/2013/07/fine.jpg 300w"><p>After</p>',
+	$gone,
+	'<p>Before</p><p>After</p>'
+);
+
+broken_image_cleaner_assert_removal(
+	'an unquoted srcset is left alone rather than guessed at',
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" srcset=' . $gone . ' 600w>',
+	$gone,
+	'<img src="/wp-content/uploads/2013/07/fine.jpg" srcset=' . $gone . ' 600w>'
+);
+
 echo "\nRewriter: everything else stays put\n";
 
 broken_image_cleaner_assert_removal(

@@ -23,6 +23,12 @@ if ( ! defined( 'ABSPATH' ) ) {
  * but the image (and markup that exists solely to decorate it) is left inside.
  * Anything unexpected in there and the wrapper stays, which at worst leaves a
  * tidy-up job rather than deleting content someone wanted.
+ *
+ * A broken URL found only in a srcset is treated differently again. The image
+ * is displaying perfectly well from its src; all that is missing is one of the
+ * alternate sizes the browser could have chosen. Removing the element there
+ * would destroy something that works, so only the dead candidate is taken out
+ * of the attribute.
  */
 class Rewriter {
 
@@ -62,6 +68,25 @@ class Rewriter {
 				break;
 			}
 
+			// Only in the srcset: the image itself is fine, so edit the
+			// attribute rather than deleting a working image.
+			if ( 'srcset' === $reference['matched'] ) {
+				$tag = self::strip_srcset_candidate( $reference['raw'], $url );
+
+				// Nothing could be changed safely — stop rather than loop.
+				if ( null === $tag ) {
+					break;
+				}
+
+				$spans[] = $reference['raw'];
+				$content = substr( $content, 0, $reference['offset'] )
+					. $tag
+					. substr( $content, $reference['offset'] + $reference['length'] );
+
+				++$removed;
+				continue;
+			}
+
 			$span = self::expand_span( $content, $reference['offset'], $reference['offset'] + $reference['length'] );
 
 			$spans[] = substr( $content, $span['start'], $span['end'] - $span['start'] );
@@ -88,12 +113,18 @@ class Rewriter {
 		$target = self::comparable_url( $url );
 
 		foreach ( Extractor::extract( $content ) as $reference ) {
+			// src is checked first: an image whose own source is missing is
+			// broken outright, whatever its srcset happens to say.
 			if ( self::comparable_url( $reference['src'] ) === $target ) {
+				$reference['matched'] = 'src';
+
 				return $reference;
 			}
 
 			foreach ( $reference['srcset'] as $candidate ) {
 				if ( self::comparable_url( $candidate ) === $target ) {
+					$reference['matched'] = 'srcset';
+
 					return $reference;
 				}
 			}
@@ -291,6 +322,68 @@ class Rewriter {
 		}
 
 		return '' === trim( (string) $fragment );
+	}
+
+	/**
+	 * Take one dead candidate out of an image tag's srcset.
+	 *
+	 * The element is left alone otherwise. If that candidate was the only one,
+	 * the srcset goes entirely, and `sizes` with it, since `sizes` describes a
+	 * srcset that would no longer exist.
+	 *
+	 * @param string $tag One `<img>` tag.
+	 * @param string $url Candidate URL to drop.
+	 * @return string|null Rewritten tag, or null if nothing could be changed.
+	 */
+	private static function strip_srcset_candidate( $tag, $url ) {
+		$matches = array();
+
+		// Only a quoted srcset can be rewritten with confidence. An unquoted
+		// one is left untouched rather than guessed at.
+		if ( ! preg_match( '#\ssrcset\s*=\s*(["\'])(.*?)\1#is', $tag, $matches, PREG_OFFSET_CAPTURE ) ) {
+			return null;
+		}
+
+		$quote  = $matches[1][0];
+		$value  = $matches[2][0];
+		$target = self::comparable_url( $url );
+
+		$kept    = array();
+		$dropped = 0;
+
+		foreach ( explode( ',', $value ) as $candidate ) {
+			$candidate = trim( $candidate );
+
+			if ( '' === $candidate ) {
+				continue;
+			}
+
+			$parts = preg_split( '/\s+/', $candidate );
+
+			if ( ! empty( $parts[0] ) && self::comparable_url( $parts[0] ) === $target ) {
+				++$dropped;
+				continue;
+			}
+
+			$kept[] = $candidate;
+		}
+
+		if ( 0 === $dropped ) {
+			return null;
+		}
+
+		$start  = $matches[0][1];
+		$length = strlen( $matches[0][0] );
+
+		if ( empty( $kept ) ) {
+			$tag = substr( $tag, 0, $start ) . substr( $tag, $start + $length );
+
+			return preg_replace( '#\ssizes\s*=\s*(["\']).*?\1#is', '', $tag, 1 );
+		}
+
+		return substr( $tag, 0, $start )
+			. ' srcset=' . $quote . implode( ', ', $kept ) . $quote
+			. substr( $tag, $start + $length );
 	}
 
 	/**

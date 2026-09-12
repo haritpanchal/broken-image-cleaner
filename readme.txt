@@ -82,6 +82,13 @@ is gone but `photo.jpg` is still there. Those are reported separately and are *n
 included in the default selection, because the right fix is usually to regenerate
 your thumbnails, not to delete the image.
 
+= An image that displays perfectly well is in the list. Why? =
+
+Responsive images offer the browser several sizes through a `srcset` attribute.
+If one of those sizes has gone missing the image still displays, because the
+browser falls back to the one that works. Cleaning it edits only the `srcset`
+list — the image itself is left exactly where it is.
+
 = Can I undo a removal? =
 
 Yes. The post's original content is stored before every edit, and the Undo button in
@@ -111,6 +118,7 @@ runs on the front end at all.
 * Background scanning of post content for images missing from the uploads folder.
 * Review table with bulk remove, ignore and re-check.
 * Removal of stranded `[caption]` shortcodes and empty link, figure and picture wrappers.
+* Missing responsive sizes are dropped from `srcset`, leaving the image itself in place.
 * Per-post undo with configurable retention.
 
 == Upgrade Notice ==
