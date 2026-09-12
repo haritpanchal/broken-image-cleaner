@@ -31,7 +31,6 @@ class Remover {
 	 * Apply removals for the given findings.
 	 *
 	 * @param array $finding_ids Finding IDs to act on.
-	 * @param bool  $dry_run     When true, work out the result without saving.
 	 * @return array {
 	 *     @type int   $posts_changed  Posts that were edited.
 	 *     @type int   $images_removed Image references removed.
@@ -39,7 +38,7 @@ class Remover {
 	 *     @type array $errors         Human-readable messages.
 	 * }
 	 */
-	public static function remove( array $finding_ids, $dry_run = false ) {
+	public static function remove( array $finding_ids ) {
 		$report = array(
 			'posts_changed'  => 0,
 			'images_removed' => 0,
@@ -56,7 +55,7 @@ class Remover {
 		// Content is saved verbatim, so the caller must be allowed to post
 		// unfiltered HTML. Without it wp_update_post would run the whole post
 		// through kses and strip markup that has nothing to do with the image.
-		if ( ! $dry_run && ! current_user_can( 'unfiltered_html' ) ) {
+		if ( ! current_user_can( 'unfiltered_html' ) ) {
 			$report['errors'][] = __( 'Your account is not allowed to save unfiltered HTML, so post content cannot be edited safely. Ask an administrator to run the clean-up.', 'broken-image-cleaner' );
 			$report['skipped']  = count( $finding_ids );
 
@@ -72,7 +71,7 @@ class Remover {
 		$resolver = new Resolver();
 
 		foreach ( $by_post as $post_id => $findings ) {
-			$result = self::process_post( $post_id, $findings, $resolver, $dry_run );
+			$result = self::process_post( $post_id, $findings, $resolver );
 
 			$report['images_removed'] += $result['images_removed'];
 			$report['skipped']        += $result['skipped'];
@@ -92,43 +91,90 @@ class Remover {
 	 * @param int      $post_id  Post ID.
 	 * @param array    $findings Findings belonging to this post.
 	 * @param Resolver $resolver Shared resolver.
-	 * @param bool     $dry_run  Whether to skip saving.
 	 * @return array
 	 */
-	private static function process_post( $post_id, array $findings, Resolver $resolver, $dry_run ) {
+	private static function process_post( $post_id, array $findings, Resolver $resolver ) {
 		$result = array(
 			'images_removed' => 0,
 			'skipped'        => 0,
 			'errors'         => array(),
 		);
 
-		$post = get_post( $post_id );
+		$post    = get_post( $post_id );
+		$refusal = self::refusal_reason( $post_id, $post );
 
-		if ( ! $post ) {
+		if ( null !== $refusal ) {
 			$result['skipped'] += count( $findings );
-			$result['errors'][] = sprintf(
-				/* translators: %d: post ID. */
-				__( 'Post %d no longer exists.', 'broken-image-cleaner' ),
-				$post_id
-			);
-
-			return $result;
-		}
-
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			$result['skipped'] += count( $findings );
-			$result['errors'][] = sprintf(
-				/* translators: %s: post title. */
-				__( 'You are not allowed to edit "%s".', 'broken-image-cleaner' ),
-				get_the_title( $post_id )
-			);
+			$result['errors'][] = $refusal;
 
 			return $result;
 		}
 
 		$original = $post->post_content;
-		$content  = $original;
-		$applied  = array();
+		$outcome  = self::rewrite( $original, $findings, $resolver );
+
+		$result['images_removed'] = $outcome['removed'];
+		$result['skipped']        = $outcome['skipped'];
+
+		if ( $outcome['content'] === $original ) {
+			return $result;
+		}
+
+		$saved = self::save( $post_id, $original, $outcome['content'], $outcome['applied'] );
+
+		if ( is_wp_error( $saved ) ) {
+			$result['errors'][]       = $saved->get_error_message();
+			$result['skipped']       += count( $outcome['applied'] );
+			$result['images_removed'] = 0;
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Why this post cannot be edited, if it cannot.
+	 *
+	 * @param int           $post_id Post ID.
+	 * @param \WP_Post|null $post    The post, if it still exists.
+	 * @return string|null Message for the user, or null when the edit may go ahead.
+	 */
+	private static function refusal_reason( $post_id, $post ) {
+		if ( ! $post ) {
+			return sprintf(
+				/* translators: %d: post ID. */
+				__( 'Post %d no longer exists.', 'broken-image-cleaner' ),
+				$post_id
+			);
+		}
+
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return sprintf(
+				/* translators: %s: post title. */
+				__( 'You are not allowed to edit "%s".', 'broken-image-cleaner' ),
+				get_the_title( $post_id )
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Work the selected removals through a post's content.
+	 *
+	 * @param string   $content  Current post content.
+	 * @param array    $findings Findings belonging to this post.
+	 * @param Resolver $resolver Shared resolver.
+	 * @return array {
+	 *     @type string $content Content after the removals.
+	 *     @type int    $removed References removed.
+	 *     @type int    $skipped Findings left alone.
+	 *     @type array  $applied IDs of the findings that were acted on.
+	 * }
+	 */
+	private static function rewrite( $content, array $findings, Resolver $resolver ) {
+		$removed = 0;
+		$skipped = 0;
+		$applied = array();
 
 		foreach ( $findings as $finding ) {
 			// The queue may be minutes or weeks old. Confirm the file is still
@@ -136,11 +182,9 @@ class Remover {
 			$check = $resolver->check( $finding->image_url );
 
 			if ( Resolver::STATUS_BROKEN !== $check['status'] ) {
-				++$result['skipped'];
+				++$skipped;
 
-				if ( ! $dry_run ) {
-					Store::set_status( $finding->id, Store::STATUS_RESTORED );
-				}
+				Store::set_status( $finding->id, Store::STATUS_RESTORED );
 
 				continue;
 			}
@@ -148,19 +192,34 @@ class Remover {
 			$outcome = Rewriter::remove_image( $content, $finding->image_url );
 
 			if ( 0 === $outcome['removed'] ) {
-				++$result['skipped'];
+				++$skipped;
+
 				continue;
 			}
 
-			$content                   = $outcome['content'];
-			$result['images_removed'] += $outcome['removed'];
-			$applied[]                 = (int) $finding->id;
+			$content   = $outcome['content'];
+			$removed  += $outcome['removed'];
+			$applied[] = (int) $finding->id;
 		}
 
-		if ( $content === $original || $dry_run ) {
-			return $result;
-		}
+		return array(
+			'content' => $content,
+			'removed' => $removed,
+			'skipped' => $skipped,
+			'applied' => $applied,
+		);
+	}
 
+	/**
+	 * Snapshot the post, save the new content, and mark the findings done.
+	 *
+	 * @param int    $post_id  Post ID.
+	 * @param string $original Content before the edit.
+	 * @param string $content  Content after the edit.
+	 * @param array  $applied  Findings that were acted on.
+	 * @return true|\WP_Error
+	 */
+	private static function save( $post_id, $original, $content, array $applied ) {
 		Backup::save( $post_id, $original, $applied );
 
 		$updated = wp_update_post(
@@ -172,17 +231,13 @@ class Remover {
 		);
 
 		if ( is_wp_error( $updated ) ) {
-			$result['errors'][]       = $updated->get_error_message();
-			$result['skipped']       += count( $applied );
-			$result['images_removed'] = 0;
-
-			return $result;
+			return $updated;
 		}
 
 		foreach ( $applied as $finding_id ) {
 			Store::set_status( $finding_id, Store::STATUS_REMOVED );
 		}
 
-		return $result;
+		return true;
 	}
 }
