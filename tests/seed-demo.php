@@ -25,7 +25,7 @@ if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 	exit( 'This script must be run through WP-CLI.' );
 }
 
-const BIC_DEMO_META = '_broken_image_cleaner_demo';
+const BROKEN_IMAGE_CLEANER_DEMO_META = '_broken_image_cleaner_demo';
 
 $mode = ( isset( $args ) && isset( $args[0] ) ) ? $args[0] : 'seed';
 
@@ -51,14 +51,14 @@ $empty_files = array( '2013/07/empty.jpg' );
  * @param array  $empty_files Files created as zero-byte images.
  * @return int Number of posts deleted.
  */
-function bic_demo_cleanup( $basedir, array $present, array $empty_files ) {
+function broken_image_cleaner_demo_cleanup( $basedir, array $present, array $empty_files ) {
 	$posts = get_posts(
 		array(
 			'post_type'   => 'any',
 			'post_status' => 'any',
 			'numberposts' => 200,
 			'fields'      => 'ids',
-			'meta_key'    => BIC_DEMO_META, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+			'meta_key'    => BROKEN_IMAGE_CLEANER_DEMO_META, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 		)
 	);
 
@@ -79,7 +79,7 @@ function bic_demo_cleanup( $basedir, array $present, array $empty_files ) {
 }
 
 if ( 'cleanup' === $mode ) {
-	$removed = bic_demo_cleanup( $basedir, $present, $empty_files );
+	$removed = broken_image_cleaner_demo_cleanup( $basedir, $present, $empty_files );
 
 	WP_CLI::success( sprintf( 'Removed %d demo posts and the files they used.', $removed ) );
 
@@ -87,7 +87,7 @@ if ( 'cleanup' === $mode ) {
 }
 
 // Start from a clean slate so the script can be run repeatedly.
-bic_demo_cleanup( $basedir, $present, $empty_files );
+broken_image_cleaner_demo_cleanup( $basedir, $present, $empty_files );
 
 // A real one-pixel GIF, so the images that are supposed to work actually render.
 $pixel = base64_decode( 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' );
@@ -258,7 +258,7 @@ foreach ( $posts as $index => $spec ) {
 		continue;
 	}
 
-	update_post_meta( $post_id, BIC_DEMO_META, 1 );
+	update_post_meta( $post_id, BROKEN_IMAGE_CLEANER_DEMO_META, 1 );
 
 	$created[] = array( $post_id, $spec['title'], $spec['expect'] );
 }
