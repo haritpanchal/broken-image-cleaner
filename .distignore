@@ -1,4 +1,12 @@
 # Development-only files, excluded from the released plugin.
+
+# Operating-system clutter. These appear without being asked for, so the build
+# script also prunes them and refuses to package anything hidden.
+.DS_Store
+._*
+Thumbs.db
+*.log
+
 .distignore
 .git
 .gitignore

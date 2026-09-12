@@ -24,6 +24,20 @@ rsync -a \
 	--exclude="bin" \
 	"${ROOT}/" "${BUILD}/${SLUG}/"
 
+# .distignore is easy to forget, and macOS writes .DS_Store files into any
+# directory somebody opens in Finder. Prune the usual offenders outright...
+find "${BUILD}/${SLUG}" \
+	\( -name '.DS_Store' -o -name '._*' -o -name 'Thumbs.db' -o -name '*.log' \) \
+	-delete
+
+# ...then refuse to build at all if anything hidden is still staged, rather
+# than shipping it and finding out from a reviewer.
+if find "${BUILD}/${SLUG}" -name '.*' | grep -q .; then
+	echo "Refusing to build: hidden files are staged in the plugin." >&2
+	find "${BUILD}/${SLUG}" -name '.*' >&2
+	exit 1
+fi
+
 ( cd "${BUILD}" && zip -rq "${SLUG}.zip" "${SLUG}" )
 
 echo "Built ${BUILD}/${SLUG}.zip"
