@@ -242,10 +242,31 @@ class Scanner {
 	 * @return string
 	 */
 	private static function snippet( $content, $offset, $length ) {
-		$start   = max( 0, $offset - 60 );
-		$snippet = substr( $content, $start, $length + 120 );
+		$start = max( 0, $offset - 80 );
+		$slice = substr( $content, $start, $length + 160 );
 
-		return wp_html_excerpt( $snippet, 200, '…' );
+		// The slice is cut at a byte count, so it usually begins and ends in the
+		// middle of a tag. Those half-tags have to go before the markup is
+		// stripped: with its opening bracket already lost, a slice starting
+		// inside a paragraph is not recognised as a tag at all and survives
+		// stripping as the literal text "p>".
+		if ( $start > 0 ) {
+			$first_open  = strpos( $slice, '<' );
+			$first_close = strpos( $slice, '>' );
+
+			if ( false !== $first_close && ( false === $first_open || $first_close < $first_open ) ) {
+				$slice = substr( $slice, $first_close + 1 );
+			}
+		}
+
+		$last_open  = strrpos( $slice, '<' );
+		$last_close = strrpos( $slice, '>' );
+
+		if ( false !== $last_open && ( false === $last_close || $last_open > $last_close ) ) {
+			$slice = substr( $slice, 0, $last_open );
+		}
+
+		return wp_html_excerpt( trim( $slice ), 200, '…' );
 	}
 
 	/**

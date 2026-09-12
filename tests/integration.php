@@ -146,6 +146,27 @@ $check(
 $check( 'the healthy image is not flagged', false, isset( $rows['fine.jpg'] ) );
 $check( 'the external image is not flagged', false, isset( $rows['remote.jpg'] ) );
 
+// A snippet is cut at a byte count, so it lands mid-tag far more often than not.
+// Any half-tag has to be dropped before the markup is stripped, or its remains
+// show up in the review table as stray text like "p>".
+$broken_snippets = array_filter(
+	$rows,
+	function ( $row ) {
+		return (bool) preg_match( '/^\s*[a-zA-Z][a-zA-Z0-9-]*>/', $row->context_snippet );
+	}
+);
+
+$check(
+	'no context snippet starts with the remains of a cut-off tag',
+	array(),
+	array_map(
+		function ( $row ) {
+			return $row->context_snippet;
+		},
+		$broken_snippets
+	)
+);
+
 WP_CLI::log( '' );
 WP_CLI::log( 'Removal' );
 
